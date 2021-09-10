@@ -1,46 +1,82 @@
-
 // IMPORTING MODULES
 const mineflayer = require('mineflayer')
-const { pathfinder, Movements, goals: { GoalNear } } = require('mineflayer-pathfinder')
+const {pathfinder, Movements, goals: {GoalNear}} = require('mineflayer-pathfinder')
 const blockFinderPlugin = require('mineflayer-blockfinder')(mineflayer);
 const inventoryViewer = require('mineflayer-web-inventory')
 // IMPORTING MODULES
+var mc = require('minecraft-protocol');
+
+var client = mc.createClient({
+    host: 'mc.thearchon.net', // minecraft server ip
+    username: 'mckayladupart@gmail.com', // minecraft username
+    password: 'Snowflake15!',
+    version: "1.8.9"
+});
 
 
 // CREATING BOT
-if (process.argv.length < 4 || process.argv.length > 6) {
-    console.log('Usage : node gps.js <host> <port> [<name>] [<password>]')
-    process.exit(1)
-}
+// if (process.argv.length < 4 || process.argv.length > 6) {
+//     console.log('Usage : node gps.js <host> <port> [<name>] [<password>]')
+//     process.exit(1)
+// }
 const bot = mineflayer.createBot({
-    host: process.argv[2],
-    port: parseInt(process.argv[3]),
-    username: process.argv[4] ? process.argv[4] : 'gps',
-    password: process.argv[5]
+    client: client,
+    // host: process.argv[2],
+    // port: parseInt(process.argv[3]),
+    // username: process.argv[4] ? process.argv[4] : 'gps',
+    // password: process.argv[5]
 })
 // CREATING BOT
+client.on('transaction', function(packet) {
+    packet.accepted=true;
+    client.write('transaction', packet)
+});
 
-
-const RANGE_GOAL = 1 // get within this radius of the player
 bot.loadPlugin(blockFinderPlugin);
 bot.loadPlugin(pathfinder)
-bot.version='1.8.9'
 inventoryViewer(bot)
 
 let mcData
 bot.once('inject_allowed', () => {
     mcData = require('minecraft-data')(bot.version)
 })
+bot.on("spawn", function (){
+    bot.chat("/outlands")
+})
+bot.once('resourcePack', () => { // resource pack sent by server
+    setTimeout(function (){
+        bot.acceptResourcePack()
+        console.log('ResourcePack Done')
+    }, 2000)
+})
+bot.once("kicked", (reason) => {
+    console.log(reason)
+})
+
 // COMMAND LIST
 bot.on('chat', async (username, message) => {
     if (username === bot.username) return
     switch (message) {
         case 'loaded':
             await bot.waitForChunksToLoad()
-            bot.chat('Ready!')
+            console.log('Ready!')
             break
         case 'dest':
-                move(username, 10)
+            move(username, 10)
+            break
+        case 'come':
+            const mcData = require('minecraft-data')(bot.version)
+            const defaultMove = new Movements(bot, mcData)
+            const target = bot.players[username]?.entity
+
+            if (!target) {
+                bot.chat("I don't see you !")
+                return
+            }
+
+            const { x: playerX, y: playerY, z: playerZ } = target.position
+            bot.pathfinder.setMovements(defaultMove)
+            bot.pathfinder.setGoal(new GoalNear(playerX, playerY, playerZ, 1))
             break
         case 'break':
             blockBreak()
@@ -51,7 +87,13 @@ bot.on('chat', async (username, message) => {
         case 'chest':
             chestHandler()
             break
-
+        case 'cipriano':
+            joinOutlands()
+            break
+        case 'tpa edolce':
+            console.log()
+            bot.chat("/tpa edolce")
+            break
     }
 })
 
@@ -59,118 +101,205 @@ bot.on('chat', async (username, message) => {
 
 
 // FUNCTIONS
-function move(username, i){
-    if(isInventoryFull()){
+function move(username, i) {
+    if (isInventoryFull()) {
+        chestHandler()
         return;
     }
     const mcData = require('minecraft-data')(bot.version)
     const defaultMove = new Movements(bot, mcData)
-    const target = bot.players[username]?.entity
-    if (!target) {
-        bot.chat("I don't see you !")
-        return
-    }
 
 
     bot.findBlock({
-        point: bot.entity.position,
-        matching: 17,
-        maxDistance: 32,
-        count: 1,
-    },function(err, blocks) {
-        if (err) {
-            return bot.chat('Error trying to find Diamond Ore: ' + err)
+            point: bot.entity.position,
+            matching: 17,
+            maxDistance: 32,
+            count: 1,
+        }, function (err, blocks) {
+            if (blocks.length) {
+                const {x: playerX, y: playerY, z: playerZ} = blocks[0].position
+                bot.pathfinder.setMovements(defaultMove)
+                bot.pathfinder.goto(new GoalNear(playerX, playerY, playerZ, 2),
+                    function (err, result) {
+                        blockBreak(blocks[0], username, i)
+                    }
+                )
+
+
+            } else {
+                console.log("I couldn't find any log blocks within 32.")
+            }
+
         }
-        if (blocks.length) {
-            bot.chat('I found a log at ' + blocks[0].position + '.')
-            const { x: playerX, y: playerY, z: playerZ } = blocks[0].position
-            bot.pathfinder.setMovements(defaultMove)
-            bot.pathfinder.goto(new GoalNear(playerX, playerY, playerZ, 2),
-                function(err,result){blockBreak(blocks[0], username, i)}
-            )
-
-
-        } else {
-            bot.chat("I couldn't find any log blocks within 32.")
-        }
-
-    }
     )
 }
 
-function blockBreak(block, username, i){
-    let target=block
+function blockBreak(block, username, i) {
+    let target = block
     if (bot.targetDigBlock) {
-        bot.chat(`already digging ${bot.targetDigBlock.name}`)
+        console.log(`already digging ${bot.targetDigBlock.name}`)
     } else {
         // target = blocco da rompere
         //
 
 
-
-
         //target = bot.blockAt(bot.entity.position.offset(0, -1, 0))
         if (target && bot.canDigBlock(target)) {
-            bot.chat(`starting to dig ${target.name}`)
             bot.dig(target, onDiggingCompleted)
         } else {
-            bot.chat('cannot dig')
+            console.log('cannot dig')
         }
     }
 
-    function onDiggingCompleted (err) {
+    function onDiggingCompleted(err) {
         if (err) {
             console.log(err.stack)
             return
         }
-        bot.chat(`finished digging ${target.name}`)
-        move(username,i-1)
+        move(username, i - 1)
     }
 }
 
-function equipAxe(){
+function equipAxe() {
     bot.equip(279, 'hand', (err) => {
         if (err) {
-            bot.chat(`unable to equip diamond axe`)
+            console.log(`unable to equip diamond axe`)
             bot.equip(258, 'hand', (err) => {
                 if (err) {
-                    bot.chat(`unable to equip iron axe`)
+                    console.log(`unable to equip iron axe`)
                     bot.equip(275, 'hand', (err) => {
                         if (err) {
-                            bot.chat(`unable to equip stone axe`)
+                            console.log(`unable to equip stone axe`)
                             bot.equip(271, 'hand', (err) => {
                                 if (err) {
-                                    bot.chat(`unable to equip wooden axe`)
+                                    console.log(`unable to equip wooden axe`)
                                 } else {
-                                    bot.chat('equipped wooden axe')
+                                    console.log('equipped wooden axe')
                                 }
                             })
                         } else {
-                            bot.chat('equipped stone axe')
+                            console.log('equipped stone axe')
                         }
                     })
                 } else {
-                    bot.chat('equipped iron axe')
+                    console.log('equipped iron axe')
                 }
             })
         } else {
-            bot.chat('equipped diamond axe')
+            console.log('equipped diamond axe')
         }
     })
 }
 
+async function firstTimeDoor(){
+    let DoorToClick
+    bot.findBlock({
+            point: bot.entity.position,
+            matching: [330,324],
+            maxDistance: 1,
+            count: 1
+        }, function (err, blocks) {
+            secondFunction(err, blocks)
+        }
+    )
+
+
+    bot.findBlock({
+            point: bot.entity.position,
+            matching: 17,
+            maxDistance: 32,
+            count: 1,
+        }, function (err, blocks) {
+            secondFunction(err, blocks)
+        }
+    )
+
+
+    function firstFunction(err,blocks){
+
+        if (blocks.length) {
+            console.log('I found a door at ' + blocks[0].position + '.')
+            const {x: playerX, y: playerY, z: playerZ} = blocks[0].position
+            bot.pathfinder.setMovements(defaultMove)
+            bot.pathfinder.goto(new GoalNear(playerX, playerY, playerZ, 2),
+                function (err, result) {
+                    insertCode()
+                }
+            )
+
+
+        } else {
+            console.log("I couldn't find any door blocks within 32.")
+        }
+
+        if (err) {
+            return console.log('Error trying to find door: ' + err)
+        }
+        if (blocks.length) {
+            console.log('I found a door at ' + blocks[0].position + '.')
+            DoorToClick = blocks[0]
+        }
+    }
+
+
+    const secondFunction = async (err, blocks) => {
+        await firstFunction(err, blocks)
+
+        if (!DoorToClick) {
+            console.log('no door found')
+            return
+        }
+        await bot.activateBlock(DoorToClick)
+        insertCode()
+    }
+}
+
+function insertCode(){
+    bot.clickWindow(12,0,0)
+    setTimeout(function (){
+        bot.clickWindow(22,0,0)
+    }, 1000);
+    setTimeout(function (){
+        bot.clickWindow(32,0,0)
+    }, 2000);
+    setTimeout(function (){
+        bot.clickWindow(14,0,0)
+    }, 3000);
+    setTimeout(function (){
+        bot.clickWindow(30,0,0)
+    }, 4000);
+    setTimeout(function (){
+        bot.clickWindow(41,0,0)
+    }, 5000);
+}
+
+function joinOutlands(){
+    bot.simpleClick.rightMouse(4)
+    bot.clickWindow(12,0,0)
+}
+
+function walkAround(){}
+
 //CHECK WHEN INVENTORY IS FULL
-function isInventoryFull(){
+function isInventoryFull() {
     let window = bot.inventory
-    if(window.emptySlotCount()===0){
-        bot.chat('Inventory FULL!!')
-        //goHome()
+    if (window.emptySlotCount() === 0) {
+        console.log('Inventory FULL!!')
+        goHome()
         return true
     }
     return false
 }
 
-/*
+//CHECK IF CHEST IS FULL
+function isChestFull(chest){
+    if (chest.emptySlotCount() === 0) {
+        console.log('Chest FULL')
+        return true
+    }
+}
+
+
 //HOME COORDS
 const home={x:48,y:73,z:157}
 //GO HOME
@@ -178,53 +307,72 @@ function goHome(){
     const mcData = require('minecraft-data')(bot.version)
     const defaultMove = new Movements(bot, mcData)
     bot.pathfinder.setMovements(defaultMove)
-    bot.chat('test')
-
     bot.pathfinder.goto(new GoalNear(home.x, home.y, home.z, 1), function(err,result){chestHandler()})
-    bot.chat('test')
+}
 
-}*/
-
-/*
-async function chestHandler(){
-    bot.chat('test3')
-
-    bot.chat('test3.5')
+async function chestHandler() {
     let chestToOpen
-    chestToOpen = bot.findBlock({
-            matching: 49,
-            maxDistance: 6
-        },(err) => {
-        if (err) {
-            return bot.chat('Error trying to find Diamond Ore: ' + err)
+    bot.findBlock({
+        point: bot.entity.position,
+        matching: 54,
+        maxDistance: 6,
+        count: 1
+    }, function (err, blocks) {
+            secondFunction(err, blocks)
         }
-    })
+    )
+
+
+    function firstFunction(err,blocks){
+        // do some asynchronous work
+        // and when the asynchronous stuff is complete
+
+        if (err) {
+            return console.log('Error trying to find chest: ' + err)
+        }
+        if (blocks.length) {
+            console.log('I found a chest at ' + blocks[0].position + '.')
+            chestToOpen = blocks[0]
+
+        }
+
+
+    }
+
+
+    const secondFunction = async (err, blocks) => {
+        await firstFunction(err, blocks)
+        // do something else here after firstFunction completes
         if (!chestToOpen) {
-            bot.chat('no chest found')
+            console.log('no chest found')
             return
         }
-    bot.chat('test4')
-    const chest = await bot.openChest(chestToOpen)
-    bot.chat('test5')
-    await depositItem("log",10000)
-    bot.chat('test6')
-    async function depositItem (name, amount) {
-        const item = itemByName(chest.items(), name)
-        if (item) {
-            try {
-                await chest.deposit(item.type, null, amount)
-                bot.chat(`deposited ${amount} ${item.name}`)
-            } catch (err) {
-                bot.chat(`unable to deposit ${amount} ${item.name}`)
+        const chest = await bot.openChest(chestToOpen)
+        await depositItem("log", 10000)
+
+        async function depositItem(name, amount) {
+            const item = itemByName(chest.items(), name)
+            if (item) {
+                try {
+                    await chest.deposit(item.type, null, amount)
+                    console.log(`deposited ${amount} ${item.name}`)
+                } catch (err) {
+                    console.log(`unable to deposit ${amount} ${item.name}`)
+                }
+            } else {
+                console.log(`unknown item ${name}`)
             }
-        } else {
-            bot.chat(`unknown item ${name}`)
+            closeChest()
+        }
+
+        function closeChest () {
+            chest.close()
+            bot.removeListener('chat', onChat)
         }
     }
-}*/
+}
 
-
-function itemByName (items, name) {
+function itemByName(items, name) {
     let item
     let i
     for (i = 0; i < items.length; ++i) {
