@@ -14,7 +14,8 @@
     "mineflayer": "^3.11.0",
     "mineflayer-blockfinder": "0.0.7",
     "mineflayer-pathfinder": "^1.7.0",
-    "mineflayer-web-inventory": "^1.6.3"
+    "mineflayer-web-inventory": "^1.6.3",
+    "vec3": "^0.1.7"
   },
   "devDependencies": {
     "minecraft-protocol": "^1.26.5"
